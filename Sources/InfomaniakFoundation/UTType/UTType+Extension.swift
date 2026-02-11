@@ -1,6 +1,6 @@
 /*
  Infomaniak Foundation
- Copyright (C) 2023-2025 Infomaniak Network SA
+ Copyright (C) 2026 Infomaniak Network SA
 
  This program is free software: you can redistribute it and/or modify
  it under the terms of the GNU General Public License as published by
@@ -19,12 +19,11 @@
 import UniformTypeIdentifiers
 
 public extension UTType {
-    func conforms(to types: [UTType]) -> Bool {
-        for type in types {
-            if conforms(to: type) {
-                return true
-            }
-        }
-        return false
-    }
+    static let onlyOffice = UTType("org.oasis-open.opendocument.text")!
+    static let pages = UTType("com.apple.iwork.pages.sffpages")!
+    static let wordDoc = UTType("com.microsoft.word.doc")!
+    static let wordDocm = UTType(mimeType: "application/vnd.ms-word")!
+    static let wordDocx = UTType("org.openxmlformats.wordprocessingml.document")!
+
+    static let ics = UTType(mimeType: "application/ics")!
 }
