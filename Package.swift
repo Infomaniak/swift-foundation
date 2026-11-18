@@ -12,15 +12,26 @@ let package = Package(
         .library(
             name: "InfomaniakFoundation",
             targets: ["InfomaniakFoundation"]
+        ),
+        .library(
+            name: "InfomaniakChunking",
+            targets: ["InfomaniakChunking"]
         )
     ],
     targets: [
         .target(
             name: "InfomaniakFoundation"
         ),
+        .target(
+            name: "InfomaniakChunking"
+        ),
         .testTarget(
             name: "InfomaniakFoundationTests",
             dependencies: ["InfomaniakFoundation"]
+        ),
+        .testTarget(
+            name: "InfomaniakChunkingTests",
+            dependencies: ["InfomaniakChunking"]
         )
     ]
 )

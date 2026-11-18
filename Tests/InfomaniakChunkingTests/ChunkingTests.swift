@@ -17,7 +17,7 @@
  */
 
 import Foundation
-@testable import InfomaniakFoundation
+@testable import InfomaniakChunking
 import Testing
 
 enum ChunkingTestConstants {
