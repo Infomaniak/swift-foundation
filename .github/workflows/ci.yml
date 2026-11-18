@@ -22,9 +22,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
       - name: Build
-        run: xcodebuild -scheme InfomaniakFoundation build -destination "platform=iOS Simulator,name=$SIMULATOR_NAME,OS=latest"
+        run: xcodebuild -scheme InfomaniakFoundation-Package build -destination "platform=iOS Simulator,name=$SIMULATOR_NAME,OS=latest"
       - name: Test
-        run: xcodebuild -scheme InfomaniakFoundation test -destination "platform=iOS Simulator,name=$SIMULATOR_NAME,OS=latest" -enableCodeCoverage YES -resultBundlePath ResultBundle.xcresult
+        run: xcodebuild -scheme InfomaniakFoundation-Package test -destination "platform=iOS Simulator,name=$SIMULATOR_NAME,OS=latest" -enableCodeCoverage YES -resultBundlePath ResultBundle.xcresult
       - name: Convert Coverage Report
         run: ./Scripts/xccov-to-generic.sh ResultBundle.xcresult > coverage.xml
       - name: SonarQube Scan

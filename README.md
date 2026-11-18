@@ -45,9 +45,8 @@ if let reader = ChunkReader(fileURL: fileURL) {
 
 ## Validation
 
-Run `swift build` and `swift test` for macOS. For iOS, run:
+Run `swift build` and `swift test` for macOS. For iOS, use the package-wide scheme to test both libraries:
 
 ```sh
-xcodebuild -scheme InfomaniakFoundation test -destination 'platform=iOS Simulator,name=iPhone 18 Pro,OS=latest'
-xcodebuild -scheme InfomaniakChunking test -destination 'platform=iOS Simulator,name=iPhone 18 Pro,OS=latest'
+xcodebuild -scheme InfomaniakFoundation-Package test -destination 'platform=iOS Simulator,name=iPhone 18 Pro,OS=latest'
 ```
