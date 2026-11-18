@@ -110,8 +110,11 @@ struct RangeProviderGutsTests {
     }
 
     @Test func missingFileThrows() {
-        #expect(throws: (any Error).self) {
+        #expect {
             try guts.readFileByteSize()
+        } throws: { error in
+            let error = error as NSError
+            return error.domain == NSCocoaErrorDomain && error.code == NSFileReadNoSuchFileError
         }
     }
 }
@@ -143,6 +146,23 @@ struct RangeProviderTests {
         #expect(try provider.allRanges == [0 ... 2, 3 ... 5, 6 ... 8, 9 ... 9])
     }
 
+    @Test func delegatesZeroValuesWithOneChunkFallback() async throws {
+        try await confirmation("Read file size once") { readsSize in
+            try await confirmation("Compute preferred chunk size once") { computesPreferredSize in
+                try await confirmation("Build ranges once") { buildsRanges in
+                    var provider = RangeProvider(fileURL: ChunkingTestFile().url, config: ChunkingTestConstants.config)
+                    provider.guts = ZeroRangeProviderGuts(
+                        readsSize: readsSize,
+                        computesPreferredSize: computesPreferredSize,
+                        buildsRanges: buildsRanges
+                    )
+                    let ranges = try provider.allRanges
+                    #expect(ranges.isEmpty)
+                }
+            }
+        }
+    }
+
     @Test(arguments: [false, true])
     func rejectsClientAndServerSizeLimits(serverLimit: Bool) {
         let config = RangeProvider.Config(
@@ -162,8 +182,11 @@ struct RangeProviderTests {
 
     @Test func missingFileThrows() {
         let provider = RangeProvider(fileURL: ChunkingTestFile().url, config: ChunkingTestConstants.config)
-        #expect(throws: (any Error).self) {
+        #expect {
             try provider.allRanges
+        } throws: { error in
+            let error = error as NSError
+            return error.domain == NSCocoaErrorDomain && error.code == NSFileReadNoSuchFileError
         }
     }
 }
@@ -186,6 +209,31 @@ private struct StubRangeProviderGuts: RangeProviderGutsable {
         #expect(totalChunksCount == 3)
         #expect(chunkSize == preferredSize)
         return [0 ... 2, 3 ... 5, 6 ... 8, 9 ... 9]
+    }
+}
+
+private struct ZeroRangeProviderGuts: RangeProviderGutsable {
+    let readsSize: Confirmation
+    let computesPreferredSize: Confirmation
+    let buildsRanges: Confirmation
+
+    func readFileByteSize() throws -> UInt64 {
+        readsSize()
+        return 0
+    }
+
+    func preferredChunkSize(for fileSize: UInt64) -> UInt64 {
+        computesPreferredSize()
+        #expect(fileSize == 0)
+        return 0
+    }
+
+    func buildRanges(fileSize: UInt64, totalChunksCount: UInt64, chunkSize: UInt64) throws -> [DataRange] {
+        buildsRanges()
+        #expect(fileSize == 0)
+        #expect(totalChunksCount == 1)
+        #expect(chunkSize == 0)
+        return []
     }
 }
 
@@ -224,9 +272,104 @@ struct ChunkReaderTests {
             }
         }
     }
+
+    @Test func propagatesSeekErrorWithoutReading() async {
+        let expectedError = NSError(domain: "ChunkReaderTests", code: 1337)
+        await confirmation("Seek once") { seeks in
+            await confirmation("Do not read after a failed seek", expectedCount: 0) { reads in
+                let handle = StubFileHandle(
+                    seekToOffset: { offset in
+                        seeks()
+                        #expect(offset == 0)
+                        throw expectedError
+                    },
+                    readUpToCount: { _ in
+                        reads()
+                        return Data()
+                    }
+                )
+                let reader = ChunkReader(mockedHandlable: handle)
+                #expect(throws: expectedError) {
+                    try reader.readChunk(range: 0 ... 1)
+                }
+            }
+        }
+    }
+
+    @Test func propagatesReadErrorAfterOneSeek() async {
+        let expectedError = NSError(domain: "ChunkReaderTests", code: 1337)
+        await confirmation("Seek once") { seeks in
+            await confirmation("Read once") { reads in
+                let handle = StubFileHandle(
+                    seekToOffset: { offset in
+                        seeks()
+                        #expect(offset == 0)
+                    },
+                    readUpToCount: { count in
+                        reads()
+                        #expect(count == 2)
+                        throw expectedError
+                    }
+                )
+                let reader = ChunkReader(mockedHandlable: handle)
+                #expect(throws: expectedError) {
+                    try reader.readChunk(range: 0 ... 1)
+                }
+            }
+        }
+    }
 }
 
 struct ChunkProviderTests {
+    @Test func doesNotReadAhead() async {
+        await confirmation("Seek only the first range") { seeks in
+            await confirmation("Read only the first range") { reads in
+                let handle = StubFileHandle(
+                    seekToOffset: { offset in
+                        seeks()
+                        #expect(offset == 0)
+                    },
+                    readUpToCount: { count in
+                        reads()
+                        #expect(count == 2)
+                        return Data()
+                    }
+                )
+                let provider = ChunkProvider(mockedHandlable: handle, ranges: [0 ... 1, 1 ... 2, 2 ... 4])
+                #expect(provider.next() == Data())
+            }
+        }
+    }
+
+    @Test(arguments: [
+        [DataRange](),
+        [0 ... 1024],
+        [0 ... 1, 1 ... 2, 2 ... 4]
+    ])
+    func readsEachRangeExactlyOnce(ranges: [DataRange]) async {
+        await confirmation("Seek once per range", expectedCount: ranges.count) { seeks in
+            await confirmation("Read once per range", expectedCount: ranges.count) { reads in
+                let handle = StubFileHandle(
+                    seekToOffset: { offset in
+                        seeks()
+                        #expect(ranges.contains { $0.lowerBound == offset })
+                    },
+                    readUpToCount: { count in
+                        reads()
+                        #expect(ranges.contains { Int($0.upperBound - $0.lowerBound) + 1 == count })
+                        return Data()
+                    }
+                )
+                let provider = ChunkProvider(mockedHandlable: handle, ranges: ranges)
+                for _ in ranges {
+                    #expect(provider.next() == Data())
+                }
+                #expect(provider.next() == nil)
+                #expect(provider.next() == nil)
+            }
+        }
+    }
+
     @Test func emptyRangesReturnNil() throws {
         try ChunkingTestFile().withContents(Data([0, 1])) { url in
             let provider = try #require(ChunkProvider(fileURL: url, ranges: []))
