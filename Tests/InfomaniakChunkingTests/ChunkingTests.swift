@@ -49,34 +49,57 @@ struct RangeProviderGutsTests {
     )
 
     @Test(arguments: [
-        (UInt64(0), UInt64(4), UInt64(10), [DataRange]()),
-        (1, 1, 1, [0 ... 0]),
-        (10, 4, 1, [0 ... 0, 1 ... 1, 2 ... 2, 3 ... 3, 4 ... 9]),
-        (10, 1, 4, [0 ... 3, 4 ... 9]),
-        (8, 4, 2, [0 ... 1, 2 ... 3, 4 ... 5, 6 ... 7]),
-        (9, 4, 2, [0 ... 1, 2 ... 3, 4 ... 5, 6 ... 7, 8 ... 8])
+        RangeGenerationCase(0, 4, 10, []),
+        RangeGenerationCase(1, 1, 1, [0 ... 0]),
+        RangeGenerationCase(10, 4, 1, [0 ... 0, 1 ... 1, 2 ... 2, 3 ... 3, 4 ... 9]),
+        RangeGenerationCase(10, 1, 4, [0 ... 3, 4 ... 9]),
+        RangeGenerationCase(8, 4, 2, [0 ... 1, 2 ... 3, 4 ... 5, 6 ... 7]),
+        RangeGenerationCase(9, 4, 2, [0 ... 1, 2 ... 3, 4 ... 5, 6 ... 7, 8 ... 8]),
+        RangeGenerationCase(0, 4, 10 * 1024 * 1024, []),
+        RangeGenerationCase(0, 1, 1, []),
+        RangeGenerationCase(4_865_229, 4, 1, [0 ... 0, 1 ... 1, 2 ... 2, 3 ... 3, 4 ... 4_865_228]),
+        RangeGenerationCase(4_865_229, 1, 1024 * 1024, [0 ... 1_048_575, 1_048_576 ... 4_865_228]),
+        RangeGenerationCase(4 * 1024 * 1024, 4, 1024 * 1024,
+                            [0 ... 1_048_575, 1_048_576 ... 2_097_151, 2_097_152 ... 3_145_727, 3_145_728 ... 4_194_303]),
+        RangeGenerationCase(4_865_229, 4, 1024 * 1024,
+                            [0 ... 1_048_575, 1_048_576 ... 2_097_151, 2_097_152 ... 3_145_727,
+                             3_145_728 ... 4_194_303, 4_194_304 ... 4_865_228])
     ])
-    func buildsContiguousRanges(fileSize: UInt64, count: UInt64, size: UInt64, expected: [DataRange]) throws {
-        let ranges = try guts.buildRanges(fileSize: fileSize, totalChunksCount: count, chunkSize: size)
-        #expect(ranges == expected)
+    func buildsContiguousRanges(testCase: RangeGenerationCase) throws {
+        let ranges = try guts.buildRanges(
+            fileSize: testCase.fileSize,
+            totalChunksCount: testCase.count,
+            chunkSize: testCase.size
+        )
+        #expect(ranges == testCase.expected)
         for (left, right) in zip(ranges, ranges.dropFirst()) {
             #expect(left.upperBound + 1 == right.lowerBound)
         }
+        try RangeContinuity().validate(ranges)
     }
 
-    @Test func rejectsZeroChunkSize() {
+    @Test(arguments: [(UInt64(10), UInt64(1)), (4_865_229, 4)])
+    func rejectsZeroChunkSize(fileSize: UInt64, count: UInt64) {
         #expect(throws: RangeProvider.ErrorDomain.IncorrectChunkSize) {
-            try guts.buildRanges(fileSize: 10, totalChunksCount: 1, chunkSize: 0)
+            try guts.buildRanges(fileSize: fileSize, totalChunksCount: count, chunkSize: 0)
         }
     }
 
-    @Test func rejectsZeroChunkCount() {
+    @Test(arguments: [(10, 1), (4_865_229, 10 * 1024 * 1024)] as [(UInt64, UInt64)])
+    func rejectsZeroChunkCount(fileSize: UInt64, chunkSize: UInt64) {
         #expect(throws: RangeProvider.ErrorDomain.IncorrectTotalChunksCount) {
-            try guts.buildRanges(fileSize: 10, totalChunksCount: 0, chunkSize: 1)
+            try guts.buildRanges(fileSize: fileSize, totalChunksCount: 0, chunkSize: chunkSize)
         }
     }
 
-    @Test(arguments: [(UInt64(1), UInt64(4), UInt64(10)), (10, 1, 11), (10, 4, 3)])
+    @Test(arguments: [
+        (UInt64(1), UInt64(4), UInt64(10)),
+        (10, 1, 11),
+        (10, 4, 3),
+        (1, 4, UInt64(10 * 1024 * 1024)),
+        (4_865_229, 1, UInt64(10 * 1024 * 1024)),
+        (4_865_229, 4, UInt64(10 * 1024 * 1024))
+    ])
     func rejectsChunksLargerThanFile(fileSize: UInt64, count: UInt64, size: UInt64) {
         #expect(throws: RangeProvider.ErrorDomain.ChunkedSizeLargerThanSourceFile) {
             try guts.buildRanges(fileSize: fileSize, totalChunksCount: count, chunkSize: size)
@@ -91,7 +114,11 @@ struct RangeProviderGutsTests {
         (50 * 1024 * 1024, 1024 * 1024),
         (500 * 1024 * 1024, 500 * 1024 * 1024 / 200),
         (500_000 * 1024 * 1024, 50 * 1024 * 1024),
-        (5_000_000_000_000_000, 50 * 1024 * 1024)
+        (5_000_000_000_000_000, 50 * 1024 * 1024),
+        (10, 10),
+        (5 * 1025 * 1024, 1024 * 1024),
+        (100_000 * 50 * 1024 * 1024, 50 * 1024 * 1024),
+        (100_000_000 * 50 * 1024 * 1024, 50 * 1024 * 1024)
     ] as [(UInt64, UInt64)])
     func preferredChunkSize(fileSize: UInt64, expected: UInt64) {
         #expect(guts.preferredChunkSize(for: fileSize) == expected)
@@ -105,7 +132,9 @@ struct RangeProviderGutsTests {
             #expect(size == UInt64(data.count))
             let ranges = try guts.buildRanges(fileSize: size, totalChunksCount: 4, chunkSize: 1024 * 1024)
             #expect(ranges.count == 5)
+            #expect(ranges.first?.lowerBound == 0)
             #expect(ranges.last?.upperBound == size - 1)
+            try RangeContinuity().validate(ranges)
         }
     }
 
@@ -127,6 +156,9 @@ struct RangeProviderTests {
             #expect(try provider.fileSize == UInt64(data.count))
             let ranges = try provider.allRanges
             #expect(ranges.count == 5)
+            #expect(ranges.first?.lowerBound == 0)
+            #expect(ranges.last?.upperBound == UInt64(data.count) - 1)
+            try RangeContinuity().validate(ranges)
             let chunks = try #require(ChunkProvider(fileURL: url, ranges: ranges))
             var reassembled = Data()
             for range in ranges {
@@ -151,7 +183,9 @@ struct RangeProviderTests {
             try await confirmation("Compute preferred chunk size once") { computesPreferredSize in
                 try await confirmation("Build ranges once") { buildsRanges in
                     var provider = RangeProvider(fileURL: ChunkingTestFile().url, config: ChunkingTestConstants.config)
-                    provider.guts = ZeroRangeProviderGuts(
+                    provider.guts = SingleChunkRangeProviderGuts(
+                        size: 0,
+                        preferredSize: 0,
                         readsSize: readsSize,
                         computesPreferredSize: computesPreferredSize,
                         buildsRanges: buildsRanges
@@ -160,6 +194,34 @@ struct RangeProviderTests {
                     #expect(ranges.isEmpty)
                 }
             }
+        }
+    }
+
+    @Test func delegatesOriginalSuccessfulInputs() async throws {
+        try await confirmation("Read file size once") { readsSize in
+            try await confirmation("Compute preferred chunk size once") { computesPreferredSize in
+                try await confirmation("Build ranges once") { buildsRanges in
+                    var provider = RangeProvider(fileURL: ChunkingTestFile().url, config: ChunkingTestConstants.config)
+                    provider.guts = SingleChunkRangeProviderGuts(
+                        size: ChunkingTestConstants.config.chunkMinSize + 1,
+                        preferredSize: 1024 * 1024,
+                        readsSize: readsSize,
+                        computesPreferredSize: computesPreferredSize,
+                        buildsRanges: buildsRanges
+                    )
+                    let ranges = try provider.allRanges
+                    #expect(ranges.isEmpty)
+                }
+            }
+        }
+    }
+
+    @Test func rejectsFileAboveOriginalClientLimit() {
+        let config = ChunkingTestConstants.config
+        var provider = RangeProvider(fileURL: ChunkingTestFile().url, config: config)
+        provider.guts = StubRangeProviderGuts(size: config.fileMaxSizeClient + 1, preferredSize: 0)
+        #expect(throws: RangeProvider.ErrorDomain.FileTooLarge) {
+            try provider.allRanges
         }
     }
 
@@ -212,32 +274,55 @@ private struct StubRangeProviderGuts: RangeProviderGutsable {
     }
 }
 
-private struct ZeroRangeProviderGuts: RangeProviderGutsable {
+private struct SingleChunkRangeProviderGuts: RangeProviderGutsable {
+    let size: UInt64
+    let preferredSize: UInt64
     let readsSize: Confirmation
     let computesPreferredSize: Confirmation
     let buildsRanges: Confirmation
 
     func readFileByteSize() throws -> UInt64 {
         readsSize()
-        return 0
+        return size
     }
 
     func preferredChunkSize(for fileSize: UInt64) -> UInt64 {
         computesPreferredSize()
-        #expect(fileSize == 0)
-        return 0
+        #expect(fileSize == size)
+        return preferredSize
     }
 
     func buildRanges(fileSize: UInt64, totalChunksCount: UInt64, chunkSize: UInt64) throws -> [DataRange] {
         buildsRanges()
-        #expect(fileSize == 0)
+        #expect(fileSize == size)
         #expect(totalChunksCount == 1)
-        #expect(chunkSize == 0)
+        #expect(chunkSize == preferredSize)
         return []
     }
 }
 
 struct ChunkReaderTests {
+    @Test func readsSingleRangeWithOneSeekAndRead() async throws {
+        try await confirmation("Seek once") { seeks in
+            try await confirmation("Read once") { reads in
+                let handle = StubFileHandle(
+                    seekToOffset: { offset in
+                        seeks()
+                        #expect(offset == 0)
+                    },
+                    readUpToCount: { count in
+                        reads()
+                        #expect(count == 2)
+                        return Data()
+                    }
+                )
+                let reader = ChunkReader(mockedHandlable: handle)
+                let chunk = try reader.readChunk(range: 0 ... 1)
+                #expect(chunk == Data())
+            }
+        }
+    }
+
     @Test func readsInclusiveRangeAndSeeksForEachRead() throws {
         try ChunkingTestFile().withContents(Data([0, 1, 2, 3, 4])) { url in
             let reader = try #require(ChunkReader(fileURL: url))
@@ -274,7 +359,7 @@ struct ChunkReaderTests {
     }
 
     @Test func propagatesSeekErrorWithoutReading() async {
-        let expectedError = NSError(domain: "ChunkReaderTests", code: 1337)
+        let expectedError = NSError(domain: "k", code: 1337)
         await confirmation("Seek once") { seeks in
             await confirmation("Do not read after a failed seek", expectedCount: 0) { reads in
                 let handle = StubFileHandle(
@@ -297,7 +382,7 @@ struct ChunkReaderTests {
     }
 
     @Test func propagatesReadErrorAfterOneSeek() async {
-        let expectedError = NSError(domain: "ChunkReaderTests", code: 1337)
+        let expectedError = NSError(domain: "k", code: 1337)
         await confirmation("Seek once") { seeks in
             await confirmation("Read once") { reads in
                 let handle = StubFileHandle(

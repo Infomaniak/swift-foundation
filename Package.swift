@@ -31,7 +31,10 @@ let package = Package(
         ),
         .testTarget(
             name: "InfomaniakChunkingTests",
-            dependencies: ["InfomaniakChunking"]
+            dependencies: ["InfomaniakChunking"],
+            resources: [
+                .copy("Resources/Matterhorn_as_seen_from_Zermatt,_Wallis,_Switzerland,_2012_August,Wikimedia_Commons.jpg")
+            ]
         )
     ]
 )
