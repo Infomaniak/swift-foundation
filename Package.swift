@@ -12,15 +12,29 @@ let package = Package(
         .library(
             name: "InfomaniakFoundation",
             targets: ["InfomaniakFoundation"]
+        ),
+        .library(
+            name: "InfomaniakChunking",
+            targets: ["InfomaniakChunking"]
         )
     ],
     targets: [
         .target(
             name: "InfomaniakFoundation"
         ),
+        .target(
+            name: "InfomaniakChunking"
+        ),
         .testTarget(
             name: "InfomaniakFoundationTests",
             dependencies: ["InfomaniakFoundation"]
+        ),
+        .testTarget(
+            name: "InfomaniakChunkingTests",
+            dependencies: ["InfomaniakChunking"],
+            resources: [
+                .copy("Resources/Matterhorn_as_seen_from_Zermatt,_Wallis,_Switzerland,_2012_August,Wikimedia_Commons.jpg")
+            ]
         )
     ]
 )
